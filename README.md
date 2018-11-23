@@ -25,3 +25,4 @@ Module to deploy a linux VM with DHCP. You only need to specify an empty network
 * No concept of global variables. Cannot specify a variable in root module and resuse in the child module.
 * Cannot pass a .tfvars file as input parameter when calling the child module. 
 * Cannot have a terraform.tfvars file for child module. Hence, the only way to override default variable values is by specifying them as parameters when calling the module. 
+* Customization works only on supported OS: https://partnerweb.vmware.com/programs/guestOS/guest-os-customization-matrix.pdf
