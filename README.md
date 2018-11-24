@@ -18,6 +18,10 @@ Module to deploy a linux VM with static IP. You need to configure a network inte
 ## modules/linux_dhcp
 Module to deploy a linux VM with DHCP. You only need to specify an empty network interface.
 
+## modules/linux_dhcp_script
+Module to deploy a linux VM with DHCP. You only need to specify an empty network interface. VM Customization is performed using a bash script.
+
+
 ## Limitations:
 * Unable to pass JSON/map variables to modules. Can only pass string variables.
 * Cannot interpolate variables i.e. cannot construct variables from other variables.
