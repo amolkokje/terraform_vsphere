@@ -7,10 +7,6 @@ variable "vm_name" {
     description = "VM name"
 }
 
-variable "vm_folder" {
-    description = "VM folder location"
-}
-
 variable "vm_template" {
     description = "Location of VM Template"
 }
@@ -20,6 +16,11 @@ variable "vm_template" {
 # --------------------------------
 # REQUIRED TO SPECIFY HERE OR PASS FROM THE CALLING MODULE
 # Here, specify as: default = "<VALUE>"
+
+variable "vm_folder" {
+    description = "VM folder location"
+    default = ""  # root folder
+}
 
 variable "vm_datacenter" {
     description = "VM data center"    
