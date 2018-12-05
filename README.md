@@ -2,7 +2,7 @@
 
 This project repository provides modules which you can use to deploy virtual machine resources in your vCenter and customize them. There are modules for windows/linux machines with static and dynamic IP custom configurations. 
 
-This repo also serves as example code for the Post <>.
+This repo also serves as example code for the Post: https://medium.com/@amolkokje/terraform-vsphere-virtual-machines-limitations-57621a73019a.
 
 There is also an example main.tf file which you can use as reference. Please look out for the comment 'REQUIRED'. The variables marked with that comment are required to be specified. 
 
@@ -30,3 +30,4 @@ Module to deploy a linux VM with DHCP. You only need to specify an empty network
 * Cannot pass a .tfvars file as input parameter when calling the child module. 
 * Cannot have a terraform.tfvars file for child module. Hence, the only way to override default variable values is by specifying them as parameters when calling the module. 
 * Customization works only on supported OS: https://partnerweb.vmware.com/programs/guestOS/guest-os-customization-matrix.pdf
+* Terraform Customization only works if installed all dependencies in the guest OS template. Dependencies: https://kb.vmware.com/s/article/2075048 
