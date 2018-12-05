@@ -18,7 +18,7 @@ resource "vsphere_folder" "test_folder" {
 
 # Terraform Customization will work if installed all dependencies, only on the supported OS list
 # Dependencies: https://kb.vmware.com/s/article/2075048
-# Supported OS list:  
+# Supported OS list: https://partnerweb.vmware.com/programs/guestOS/guest-os-customization-matrix.pdf
 
 module "win-dhcp" {
     source      = "modules/windows_dhcp/"
