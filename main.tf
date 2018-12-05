@@ -16,6 +16,10 @@ resource "vsphere_folder" "test_folder" {
 # VIRTUAL MACHINE RESOURCES
 # -------------------------------------------------------
 
+# Terraform Customization will work if installed all dependencies, only on the supported OS list
+# Dependencies: https://kb.vmware.com/s/article/2075048
+# Supported OS list:  
+
 module "win-dhcp" {
     source      = "modules/windows_dhcp/"
     vm_name     = "test-win-dhcp"
@@ -45,3 +49,23 @@ module "linux-static" {
     vm_template = "${var.vm_linux_template}"
     vm_ip       = ""  # REQUIRED
 }
+
+# Example of using a Customization script, if your VM does not have all the dependencies, or is not supported. 
+
+module "linux-dhcp-script" {
+    source      = "modules/linux_dhcp_script/"
+    vm_name     = "test-linux-dhcp-script"
+    vm_folder   = "${vsphere_folder.test_folder.path}"
+    vm_template = "${var.vm_linux_template}"
+}
+
+module "linux-static-script" {
+    source      = "modules/linux_static_script/"
+    vm_name     = "test-linux-static-script"
+    vm_folder   = "${vsphere_folder.test_folder.path}"
+    vm_template = "${var.vm_linux_template}"
+    vm_ip       = ""  # REQUIRED
+}
+
+
+

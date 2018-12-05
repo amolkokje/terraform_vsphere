@@ -1,4 +1,5 @@
 #!/bin/bash
+# Linux VM Customization script. Currently supports Centos/Ubuntu
 
 # -----------------------------------------
 # GLOBAL VARS
@@ -7,8 +8,7 @@
 RED='\e[1;31m%s\e[0m\n'
 GREEN='\e[1;32m%s\e[0m\n'
 
-ADMIN_USER="admin"
-ADMIN_PASSWORD="admin"
+NETMASK="255.255.255.0"
 
 # -----------------------------------------
 # LOGGING
@@ -20,6 +20,7 @@ function log() {
 
 function log_error() {
     printf "$RED" "$( date '+[%F_%T]' ) ${HOSTNAME}: ${LOG_PREFIX}: ERROR: $@"
+    exit 1
 }
 
 function to_log() {
@@ -30,7 +31,8 @@ function to_log() {
 
 function run() { 
     "$@";
-    if [[ $? -ne 0 ]]; then
+    RETURN_CODE=${PIPESTATUS[0]}
+    if [[ $RETURN_CODE -ne 0 ]]; then
         log_error "FAILED with RETURN_CODE=${RETURN_CODE}"
         exit ${RETURN_CODE}
     fi
@@ -38,150 +40,147 @@ function run() {
 }
 
 
-# -----------------------------------------
-# CHECKERS
-# -----------------------------------------
-
-is_32bit() {
-    run uname -m | grep -qv 'x86_64' > /dev/null 2>&1
-    return
+function get_os_id() {
+    # gets the OS id - centos/ubuntu/debian
+    
+    run sed 's/"//g' <<<cat /etc/os-release | grep -E ^ID= | sed -n 1'p' | rev | cut -d= -f1 | rev
 }
-
-is_64bit() {
-    run uname -m | grep -q 'x86_64' > /dev/null 2>&1
-    return
-}
-
-is_debian() {
-    run grep -q 'ID=debian' /etc/os-release > /dev/null 2>&1
-    return
-}
-
-is_redhat() { # Includes CentOS
-    [ -f /etc/redhat-release ]
-    return
-}
-
-is_suse() {
-    [ -f /etc/SuSE-release ] || grep -q 'ID_LIKE="suse"' /etc/os-release > /dev/null 2>&1
-    return
-}
-
-is_ubuntu() {
-    run grep -q 'ID=ubuntu' /etc/os-release > /dev/null 2>&1
-    return
-}
-
 
 # -----------------------------------------
-# UTILS
+# NEW UTILS
 # -----------------------------------------
 
-set_hostname_domain() {
-    log "Setting Hostname: $1 Domain: $2"
-    if is_redhat ; then
-cat << EOF > /etc/sysconfig/network
-NETWORKING=yes
-HOSTNAME=$1
+function restart_network() {
+    # restarts the network service
+    
+    if [ $(get_os_id) == "centos" ] ; then
+        run /etc/init.d/network restart
+    elif [ $(get_os_id) == "ubuntu" ]; then
+        run /etc/init.d/networking restart
+    fi    
+}
+
+function set_fqdn() {
+    # sets the FQDN of machine
+
+	FQDN="$1.$2"
+	log "Setting Fully Qualified Domain Name (FQDN): $FQDN"
+
+	if [ $(get_os_id) == "centos" ] ; then
+		# REFERENCE: https://support.rackspace.com/how-to/centos-hostname-change/		
+		cat > /etc/sysconfig/network << EOF
+NEWORKING=yes
+HOSTNAME=$FQDN
 EOF
-    elif is_suse ; then
-        run echo "$1" > /etc/HOSTNAME
-        run sed -i 's/DHCLIENT_SET_HOSTNAME=/c\DHCLIENT_SET_HOSTNAME="no"/' /etc/sysconfig/network/dhcp
     fi
-
-    if [ -f /etc/cloud/cloud.cfg ]; then
-        run sed -i 's/preserve_hostname.*/preserve_hostname: true/' /etc/cloud/cloud.cfg
-    fi
-
-    run echo "$1" > /etc/hostname
-
-cat << EOF > /etc/hosts
+        
+	cat > /etc/hosts << EOF
 127.0.0.1   localhost
-127.0.1.1   $1.$2 $1
+127.0.1.1   $FQDN $1
 EOF
+	
+	run hostname "$FQDN"		
+	run echo "$FQDN" > /etc/hostname
+	restart_network
+
+	FOUND_HOSTNAME=$(run hostname)
+	if [ "$FQDN" != "$FOUND_HOSTNAME" ] ; then
+		log_error "Unable to set FQDN. Trying to Set: $FQDN, Found:$FOUND_HOSTNAME"
+	fi
+	
 }
 
 
-# -----------------------------------------
-# UTILS - USERS
-# -----------------------------------------
-
-configure_ssh() {
-    log "Installing SSH server, enabling root SSH login"
-    if [ -x "$(which apt-get > /dev/null 2>&1)" ]; then
-        run apt-get install openssh-server -y
-    fi
-    run sed -i "/#\?PermitRootLogin/c\PermitRootLogin yes" /etc/ssh/sshd_config
+function get_active_network_device() {
+	# gives the available active network device
+    
+	run ip addr show | awk '/inet.*brd/{print $NF}'
 }
 
 
-create_admin_user() {
-    log "Creating admin user. User:$1"
-    if is_suse ; then
-        run useradd -m "$1"
-    elif is_debian || is_ubuntu ; then
-	run adduser -q --disabled-password --gecos User "$1"
-    else
-        run adduser "$1"
-    fi
-
-    run grep -q "$1  ALL=(ALL:ALL) ALL" /etc/sudoers || echo "$1  ALL=(ALL:ALL) ALL" >> /etc/sudoers
-}
-
-
-set_user_password() {
-    log "Set user password. User:$1, Password:$2"
-    run echo -e "$2\n$2" | passwd "$1"
-}
-
-
-# -----------------------------------------
-# UTILS - NETWORKING
-# -----------------------------------------
-
-enable_networking() {
-    log "Configuring network: Domain: $1 DNS1: $2 DNS2: $3"
-cat <<- EOF > /etc/resolv.conf
-domain $1
-search $1
-nameserver $2
-nameserver $3
-EOF
-
-    if is_redhat ; then
-        interfaces=($(ls /sys/class/net/ | grep -v lo))
-        for f in "${interfaces[@]}"; do
-cat <<- EOF > /etc/sysconfig/network-scripts/ifcfg-$f
-DEVICE=$f
+function set_dynamic_ip_address() {
+    # sets basic DHCP network settings for the active interface
+    
+    if [ $(get_os_id) == "centos" ] ; then
+        network_config="/etc/sysconfig/network-scripts/ifcfg-$1"
+        log "Rewriting network config to set DHCP: $network_config"
+        cat > $network_config << EOF
+DEVICE=$1
 BOOTPROTO=dhcp
 ONBOOT=yes
 EOF
-        done
-        run service network restart
+    
+    elif [ $(get_os_id) == "ubuntu" ] ; then
+        network_config="/etc/network/interfaces"
+        log "Rewriting network config to set DHCP: $network_config"
+        cat > $network_config << EOF
+auto lo
+iface lo inet loopback
+auto eth0
+iface eth0 inet dhcp
+EOF
+
     fi
-    if is_suse ; then
-        #TODO: Find way to get ID dynamically
-        run yast2 lan edit id=0 bootproto=dhcp
-    fi
+    
+	restart_network
 }
 
 
-# -----------------------------------------
-# UTILS - FIREWALL
-# -----------------------------------------
+function get_gateway_address() {
+    # calculates the gateway address based on the IP address
+    
+    replace_with="252"
+    for x in $(IFS='.';echo $1); do replace=$x; done
+    echo ${1/$replace/$replace_with}
+}
 
-open_firewall_ssh() {
-    log "Opening firewall for SSH"
-    if is_suse ; then
-        run yast2 firewall services add service=service:sshd zone=EXT
+
+function set_static_ip_address() {
+    # sets the network configuration for static IP    
+    # Centos: https://www.centos.org/docs/5/html/Deployment_Guide-en-US/s1-networkscripts-interfaces.html
+    # Ubuntu: https://www.howtoforge.com/linux-basics-set-a-static-ip-on-ubuntu
+    
+	gateway=$(get_gateway_address $2)
+    log "Setting Static IP address: IP=$2, DNS1=$3, DNS2=$4, NETMASK=$NETMASK, GATEWAY=$gateway"
+    
+    if [ $(get_os_id) == "centos" ] ; then
+        network_config="/etc/sysconfig/network-scripts/ifcfg-$1"
+        log "Rewriting network config to set static IP: $network_config"
+        cat > $network_config << EOF
+DEVICE=$1
+BOOTPROTO=static
+ONBOOT=yes
+IPADDR=$2
+NETMASK=$NETMASK
+GATEWAY=$gateway
+DNS1=$3
+DNS2=$4
+PEERDNS=yes
+EOF
+
+    elif [ $(get_os_id) == "ubuntu" ] ; then
+        network_config="/etc/network/interfaces"
+        log "Rewriting network config to set static IP: $network_config"
+        cat > $network_config << EOF
+auto lo
+iface lo inet loopback
+auto eth0
+iface eth0 inet static
+address $2
+gateway $gateway
+netmask $NETMASK
+dns-nameservers $3 $4
+EOF
+
     fi
+    
+    restart_network	
 }
 
 
 # -----------------------------------------
 # MAIN
 # -----------------------------------------
-
 
 if [ "$EUID" -ne 0 ]
   then echo "This script must be run as root. Exiting."
@@ -219,33 +218,27 @@ case $key in
     shift # past value
     ;;
     *)    # unknown option
-    log "ERROR: Unknown Command Line Parametr: $1"
-    exit 2
+    log_error "Unknown Command Line Parameter: $1"
     ;;
 esac
 done
 
 log "Input Params: $NAME, $DOMAIN, $DNS1, $DNS2, $IP_ADDRESS"
 
-# Required parameters - pass these only for DHCP
-# For Static IP, need to pass values for all parameters
-
+# Required minimum parameters
 if [ -z "$NAME" ] || [ -z "$DOMAIN" ]
 then
     log_error "NAME or DOMAIN not defined!"
-    exit 1
 fi
 
-create_admin_user "$ADMIN_USER"
-set_user_password "$ADMIN_USER" "$ADMIN_PASSWORD"
+set_fqdn $NAME $DOMAIN
 
-set_hostname_domain "${NAME}" "${DOMAIN}"
-
-if [ ! -z "$DNS1" ] || [ ! -z "$DNS2" ]
-then
-     enable_networking "${DOMAIN}" "${DNS1}" "${DNS2}"
+# if IP address and DNS servers specified, set static IP, else set DHCP
+if [ ! -z "$IP_ADDRESS" ] || [ ! -z "$DNS1" ] || [ ! -z "$DNS2" ]
+then    
+    set_static_ip_address $(get_active_network_device) $IP_ADDRESS $DNS1 $DNS2
+else
+    set_dynamic_ip_address $(get_active_network_device)
 fi
 
-configure_ssh
-
-# TODO - reboot?
+log "Done with VM customization"

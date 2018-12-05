@@ -11,6 +11,10 @@ variable "vm_template" {
     description = "Location of VM Template"
 }
 
+variable "vm_ip" {
+    description = "VM IP address"
+}
+
 # --------------------------------
 # DEFAULTS
 # --------------------------------
@@ -58,9 +62,12 @@ variable "vm_scsi_type" {
     description = "SCSI type"
 }
 
+variable "vm_dns_servers" {
+    description = "SCSI type"
+}
+
 variable "vm_root_password" {
     description = "VM root password"
-    default = "Welcome2mcafee"
 }
 
 variable "vm_customization_script" {

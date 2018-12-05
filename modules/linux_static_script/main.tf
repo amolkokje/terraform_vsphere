@@ -93,7 +93,7 @@ resource "vsphere_virtual_machine" "linux-vm" {
             "chmod +x /tmp/${var.vm_customization_script}",
 			
             # execute the script
-            "bash /tmp/${var.vm_customization_script} --domain ${var.vm_domain} --hostname ${var.vm_name}"
+            "bash /tmp/${var.vm_customization_script} --ip_address ${var.vm_ip} --dns1 ${ element( split(",", var.vm_dns_servers), 0) } --dns2 ${ element( split(",", var.vm_dns_servers), 1) } --domain ${var.vm_domain} --hostname ${var.vm_name}"
 		]
 	}
 }
