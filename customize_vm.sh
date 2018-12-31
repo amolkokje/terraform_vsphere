@@ -8,8 +8,6 @@
 RED='\e[1;31m%s\e[0m\n'
 GREEN='\e[1;32m%s\e[0m\n'
 
-NETMASK="255.255.255.0"
-
 # -----------------------------------------
 # LOGGING
 # -----------------------------------------
@@ -41,9 +39,15 @@ function run() {
 
 
 function get_os_id() {
-    # gets the OS id - centos/ubuntu/debian
-    
-    run sed 's/"//g' <<<cat /etc/os-release | grep -E ^ID= | sed -n 1'p' | rev | cut -d= -f1 | rev
+    if [ -f /etc/oracle-release ]; then 
+        echo 'oracle'        
+    elif [ -f /etc/redhat-release ]; then
+        echo 'redhat'
+    elif [ -f /etc/SuSE-release ]; then 
+        echo 'suse'    
+    else
+       run sed 's/"//g' <<<cat /etc/os-release | grep -E ^ID= | sed -n 1'p' | rev | cut -d= -f1 | rev
+    fi    
 }
 
 # -----------------------------------------
@@ -53,10 +57,11 @@ function get_os_id() {
 function restart_network() {
     # restarts the network service
     
-    if [ $(get_os_id) == "centos" ] ; then
-        run /etc/init.d/network restart
-    elif [ $(get_os_id) == "ubuntu" ]; then
-        run /etc/init.d/networking restart
+    if [[ ($(get_os_id) == "centos") || ($(get_os_id) == "redhat") || ($(get_os_id) == "oracle") ]] ; then
+        run /etc/init.d/network restart &
+    elif [[ ($(get_os_id) == "ubuntu") || ($(get_os_id) == "suse") ]] ; then
+        run /etc/init.d/networking restart &
+	#run sudo ifconfig $(get_active_network_device) down && ifconfig $(get_active_network_device) up &
     fi    
 }
 
@@ -98,52 +103,14 @@ function get_active_network_device() {
 }
 
 
-function set_dynamic_ip_address() {
-    # sets basic DHCP network settings for the active interface
-    
-    if [ $(get_os_id) == "centos" ] ; then
-        network_config="/etc/sysconfig/network-scripts/ifcfg-$1"
-        log "Rewriting network config to set DHCP: $network_config"
-        cat > $network_config << EOF
-DEVICE=$1
-BOOTPROTO=dhcp
-ONBOOT=yes
-EOF
-    
-    elif [ $(get_os_id) == "ubuntu" ] ; then
-        network_config="/etc/network/interfaces"
-        log "Rewriting network config to set DHCP: $network_config"
-        cat > $network_config << EOF
-auto lo
-iface lo inet loopback
-auto eth0
-iface eth0 inet dhcp
-EOF
-
-    fi
-    
-	restart_network
-}
-
-
-function get_gateway_address() {
-    # calculates the gateway address based on the IP address
-    
-    replace_with="252"
-    for x in $(IFS='.';echo $1); do replace=$x; done
-    echo ${1/$replace/$replace_with}
-}
-
-
 function set_static_ip_address() {
     # sets the network configuration for static IP    
     # Centos: https://www.centos.org/docs/5/html/Deployment_Guide-en-US/s1-networkscripts-interfaces.html
     # Ubuntu: https://www.howtoforge.com/linux-basics-set-a-static-ip-on-ubuntu
     
-	gateway=$(get_gateway_address $2)
-    log "Setting Static IP address: IP=$2, DNS1=$3, DNS2=$4, NETMASK=$NETMASK, GATEWAY=$gateway"
+    log "Setting Static IP address: IP=$2, DNS1=$3, DNS2=$4, NETMASK=$5, GATEWAY=$6"
     
-    if [ $(get_os_id) == "centos" ] ; then
+    if [[ ($(get_os_id) == "centos") || ($(get_os_id) == "redhat") || ($(get_os_id) == "oracle") ]] ; then
         network_config="/etc/sysconfig/network-scripts/ifcfg-$1"
         log "Rewriting network config to set static IP: $network_config"
         cat > $network_config << EOF
@@ -151,24 +118,42 @@ DEVICE=$1
 BOOTPROTO=static
 ONBOOT=yes
 IPADDR=$2
-NETMASK=$NETMASK
-GATEWAY=$gateway
+NETMASK=$5
+GATEWAY=$6
 DNS1=$3
 DNS2=$4
+
 PEERDNS=yes
 EOF
 
-    elif [ $(get_os_id) == "ubuntu" ] ; then
+    elif [[ ($(get_os_id) == "suse") || ($(get_os_id) == "opensuse-tumbleweed") ]] ; then
+        network_config="/etc/sysconfig/network/ifcfg-$1"
+        log "Rewriting network config to set static IP: $network_config"
+        cat > $network_config << EOF
+BOOTPROTO='static'
+STARTMODE='auto'
+BROADCAST=''
+ETHTOOL_OPTIONS=''
+IPADDR='$2'
+MTU='1500'
+NAME=''
+NETMASK='$5'
+REMOTE_IPADDR=''
+ZONE=public
+USERCONTROL='no'
+EOF
+   
+    elif [[ ($(get_os_id) == "ubuntu") || ($(get_os_id) == "debian") ]] ; then
         network_config="/etc/network/interfaces"
         log "Rewriting network config to set static IP: $network_config"
         cat > $network_config << EOF
 auto lo
 iface lo inet loopback
-auto eth0
-iface eth0 inet static
+auto $1
+iface $1 inet static
 address $2
-gateway $gateway
-netmask $NETMASK
+gateway $6
+netmask $5
 dns-nameservers $3 $4
 EOF
 
@@ -177,15 +162,9 @@ EOF
     restart_network	
 }
 
-
 # -----------------------------------------
 # MAIN
 # -----------------------------------------
-
-if [ "$EUID" -ne 0 ]
-  then echo "This script must be run as root. Exiting."
-  exit
-fi
 
 while [[ $# -gt 0 ]]
 do
@@ -223,7 +202,7 @@ case $key in
 esac
 done
 
-log "Input Params: $NAME, $DOMAIN, $DNS1, $DNS2, $IP_ADDRESS"
+log "Input Params: NAME=$NAME, DOMAIN=$DOMAIN, DNS1=$DNS1, DNS2=$DNS2, IPADDR=$IP_ADDRESS, NETMASK=$NETMASK, GATEWAY=$GATEWAY"
 
 # Required minimum parameters
 if [ -z "$NAME" ] || [ -z "$DOMAIN" ]
@@ -233,12 +212,14 @@ fi
 
 set_fqdn $NAME $DOMAIN
 
-# if IP address and DNS servers specified, set static IP, else set DHCP
-if [ ! -z "$IP_ADDRESS" ] || [ ! -z "$DNS1" ] || [ ! -z "$DNS2" ]
+# if all parameters are specified, set static IP, else set DHCP
+if [ ! -z "$IP_ADDRESS" ] || [ ! -z "$DNS1" ] || [ ! -z "$DNS2" ] || [ ! -z "$NETMASK" ] || [ ! -z "$GATEWAY" ]
 then    
-    set_static_ip_address $(get_active_network_device) $IP_ADDRESS $DNS1 $DNS2
+    set_static_ip_address $(get_active_network_device) $IP_ADDRESS $DNS1 $DNS2 $NETMASK $GATEWAY   
+    log "Rebooting system..."
+    sudo reboot &
 else
-    set_dynamic_ip_address $(get_active_network_device)
+    log "DHCP: Don't do anything!"
 fi
 
-log "Done with VM customization"
+exit 0
