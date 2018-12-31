@@ -15,6 +15,10 @@ variable "vm_template" {
     description = "VM Template to clone from"
 }
 
+variable "vm_gateway" {
+    description = "VM Network Gateway"
+}
+
 # --------------------------------
 # DEFAULTS
 # --------------------------------
@@ -64,4 +68,9 @@ variable "vm_scsi_type" {
 
 variable "vm_dns_servers" {
     description = "VM DNS server list, separated by commas"
+}
+
+variable "vm_netmask" {
+    description = "VM Netmask"
+    default = "24"
 }
