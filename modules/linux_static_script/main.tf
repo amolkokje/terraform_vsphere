@@ -1,5 +1,5 @@
 # --------------------------------
-# DATA
+# Data
 # --------------------------------
 
 data "vsphere_datacenter" "dc" {
@@ -28,10 +28,10 @@ data "vsphere_resource_pool" "pool" {
 
 
 # --------------------------------
-# RESOURCES
+# Resources
 # --------------------------------
 
-# Linux VM with DHCP
+# Linux VM with Static IP
 
 resource "vsphere_virtual_machine" "linux-vm" {
     # VM placement #
@@ -66,35 +66,37 @@ resource "vsphere_virtual_machine" "linux-vm" {
         template_uuid = "${data.vsphere_virtual_machine.template.id}"
     }
     
-    # Upload customization script
-	provisioner "file" {
-		connection {
-			type	    = "ssh"
-			insecure    = true
-			user	    = "root"
-			password    = "${var.vm_root_password}"
-		}
+    wait_for_guest_net_routable = false
     
-		source      = "${var.vm_customization_script}"
-		destination = "/tmp/${var.vm_customization_script}"
+    # Upload script
+    provisioner "file" {
+ 	connection {
+		type	    = "ssh"
+		insecure    = true
+		user	    = "${var.vm_user}"
+		password    = "${var.vm_password}"
 	}
     
-    # Execute customization script 
+	source      = "${var.vm_customization_script}"
+	destination = "/tmp/${var.vm_customization_script}"
+   }
+    
+    # execute the script	
     provisioner "remote-exec" {
-		connection {
-			type	    = "ssh"
-			insecure    = true
-			user	    = "root"
-			password    = "${var.vm_root_password}"
-		}
-    
-		inline = [
-            # make it an executable
-            "chmod +x /tmp/${var.vm_customization_script}",
-			
-            # execute the script
-            "bash /tmp/${var.vm_customization_script} --ip_address ${var.vm_ip} --dns1 ${ element( split(",", var.vm_dns_servers), 0) } --dns2 ${ element( split(",", var.vm_dns_servers), 1) } --domain ${var.vm_domain} --hostname ${var.vm_name}"
-		]
+	connection {
+		type	    = "ssh"
+		insecure    = true
+		user	    = "${var.vm_user}"
+		password    = "${var.vm_password}"
 	}
+    
+	inline = [
+	    # make script executable
+            "chmod +x /tmp/${var.vm_customization_script}",			
+           
+	    # execute script as sudo		
+       	    "echo ${var.vm_password} | sudo -S /bin/bash /tmp/${var.vm_customization_script} --ip_address ${var.vm_ip} --dns1 ${ element( split(",", var.vm_dns_servers), 0) } --dns2 ${ element( split(",", var.vm_dns_servers), 1) } --domain ${var.vm_domain} --hostname ${var.vm_name} --netmask ${var.vm_netmask} --gateway ${var.vm_gateway}"
+	]
+    }
 }
 
