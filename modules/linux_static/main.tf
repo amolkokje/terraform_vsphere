@@ -1,5 +1,5 @@
 # --------------------------------
-# DATA
+# Data
 # --------------------------------
 
 data "vsphere_datacenter" "dc" {
@@ -28,7 +28,7 @@ data "vsphere_resource_pool" "pool" {
 
 
 # --------------------------------
-# RESOURCES
+# Resources
 # --------------------------------
 
 # Linux VM with Static IP
@@ -40,12 +40,12 @@ resource "vsphere_virtual_machine" "linux-vm" {
     resource_pool_id = "${data.vsphere_resource_pool.pool.id}"
     datastore_id     = "${data.vsphere_datastore.datastore.id}"
 
-    num_cpus    = "${var.vm_vcpu_number}"
-    memory      = "${var.vm_memory_size}"
-    scsi_type   = "${var.vm_scsi_type}"
+    num_cpus = "${var.vm_vcpu_number}"
+    memory = "${var.vm_memory_size}"
+    scsi_type = "${var.vm_scsi_type}"
     
     # Guest OS #
-    guest_id    = "${data.vsphere_virtual_machine.template.guest_id}"
+    guest_id = "${data.vsphere_virtual_machine.template.guest_id}"
 
     # VM storage #
     disk {
@@ -74,12 +74,17 @@ resource "vsphere_virtual_machine" "linux-vm" {
             
             network_interface {
                 ipv4_address = "${var.vm_ip}"
+                ipv4_netmask = "${var.vm_netmask}"
             }
+            ipv4_gateway = "${var.vm_gateway}"
             
             # this will to allow to specify multiple values for dns servers
             dns_server_list = "${split(",", var.vm_dns_servers)}"
             dns_suffix_list = ["${var.vm_domain}"]
         }
     }
+    
+    wait_for_guest_net_routable = false
+    
 }
 
