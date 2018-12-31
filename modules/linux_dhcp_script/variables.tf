@@ -58,8 +58,13 @@ variable "vm_scsi_type" {
     description = "SCSI type"
 }
 
-variable "vm_root_password" {
-    description = "VM root password"
+variable "vm_user" {
+    description = "VM user"
+    default = "mcafee"
+}
+
+variable "vm_password" {
+    description = "VM password"
     default = "Welcome2mcafee"
 }
 
