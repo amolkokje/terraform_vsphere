@@ -1,5 +1,5 @@
 # --------------------------------
-# DATA
+# Data
 # --------------------------------
 
 data "vsphere_datacenter" "dc" {
@@ -28,7 +28,7 @@ data "vsphere_resource_pool" "pool" {
 
 
 # --------------------------------
-# RESOURCES
+# Resources
 # --------------------------------
 
 # Linux VM with DHCP
@@ -63,38 +63,41 @@ resource "vsphere_virtual_machine" "linux-vm" {
 
     # Customization of the VM #
     clone {
-        template_uuid = "${data.vsphere_virtual_machine.template.id}"
+        template_uuid = "${data.vsphere_virtual_machine.template.id}"        
     }
     
-    # Upload customization script
-	provisioner "file" {
-		connection {
-			type	    = "ssh"
-			insecure    = true
-			user	    = "root"
-			password    = "${var.vm_root_password}"
-		}
+    wait_for_guest_net_routable = false
     
-		source      = "${var.vm_customization_script}"
-		destination = "/tmp/${var.vm_customization_script}"
+    # Upload script
+    provisioner "file" {
+	connection {
+		type	    = "ssh"
+		insecure    = true
+		user	    = "${var.vm_user}"
+		password    = "${var.vm_password}"
 	}
     
-    # Execute customization script 
+	source      = "${var.vm_customization_script}"
+	destination = "/tmp/${var.vm_customization_script}"
+    }
+    
+    # Execute script	
     provisioner "remote-exec" {
-		connection {
-			type	    = "ssh"
-			insecure    = true
-			user	    = "root"
-			password    = "${var.vm_root_password}"
-		}
-    
-		inline = [
-            # make it an executable
-            "chmod +x /tmp/${var.vm_customization_script}",
-			
-            # execute the script
-            "bash /tmp/${var.vm_customization_script} --domain ${var.vm_domain} --hostname ${var.vm_name}"
-		]
+	connection {
+		type	    = "ssh"
+		insecure    = true
+		user	    = "${var.vm_user}"
+		password    = "${var.vm_password}"
 	}
+    
+	inline = [
+      	    # Make script executable			
+            "chmod +x /tmp/${var.vm_customization_script}",			
+            
+	    # Execute the script as sudo		
+            "echo ${var.vm_password} | sudo -S /bin/bash /tmp/${var.vm_customization_script} --domain ${var.vm_domain} --hostname ${var.vm_name}"
+	]
+    }   
+    
 }
 
