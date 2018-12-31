@@ -15,6 +15,10 @@ variable "vm_ip" {
     description = "VM IP address"
 }
 
+variable "vm_gateway" {
+    description = "VM Network Gateway"
+}
+
 # --------------------------------
 # DEFAULTS
 # --------------------------------
@@ -73,4 +77,9 @@ variable "vm_root_password" {
 variable "vm_customization_script" {
     description = "VM customization script"
     default = "customize_vm.sh"
+}
+
+variable "vm_netmask" {
+    description = "VM Netmask"
+    default = "255.255.255.0"
 }
